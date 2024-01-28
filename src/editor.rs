@@ -2,8 +2,10 @@ use crate::Document;
 use crate::Row;
 use crate::Terminal;
 use std::env;
+use termion::color;
 use termion::event::Key;
 
+const STATUS_BG_COLOR: color::Rgb = color::Rgb(239, 239, 239);
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 #[derive(Default)]
 pub struct Position {
@@ -85,8 +87,9 @@ impl Editor {
     }
     fn move_cursor(&mut self, key: Key) {
         let Position { mut x, mut y } = self.cursor_position;
+        let terminal_size = self.terminal.size().height as usize;
         let height = self.document.len();
-        let width = if let Some(row) = self.document.row(y) {
+        let mut width = if let Some(row) = self.document.row(y) {
             row.len()
         } else {
             0
@@ -94,22 +97,56 @@ impl Editor {
         match key {
             Key::Right => {
                 if x < width {
-                    x = x.saturating_add(1);
+                    x += 1;
+                } else if y < height {
+                    y += 1;
+                    x = 0;
                 }
             }
-            Key::Left => x = x.saturating_sub(1),
+            Key::Left => {
+                if x > 0 {
+                    x -= 1;
+                } else if y > 0 {
+                    y -= 1;
+                    if let Some(row) = self.document.row(y) {
+                        x = row.len();
+                    } else {
+                        x = 0;
+                    }
+                }
+            }
             Key::Down => {
                 if y < height {
                     y = y.saturating_add(1);
                 }
             }
             Key::Up => y = y.saturating_sub(1),
-            Key::PageUp => y = 0,
-            Key::PageDown => y = height,
+            Key::PageUp => {
+                y = if y > terminal_size {
+                    y - terminal_size
+                } else {
+                    0
+                };
+            }
+            Key::PageDown => {
+                y = if y.saturating_add(terminal_size) < height {
+                    y + terminal_size as usize
+                } else {
+                    height
+                }
+            }
             Key::Home => x = 0,
             Key::End => x = width,
             _ => (),
         };
+        width = if let Some(row) = self.document.row(y) {
+            row.len()
+        } else {
+            0
+        };
+        if x > width {
+            x = width;
+        }
         self.cursor_position = Position { x, y }
     }
     fn refresh_screen(&self) -> Result<(), std::io::Error> {
@@ -121,6 +158,8 @@ impl Editor {
             println!("Goodbye.\r");
         } else {
             self.draw_rows();
+            self.draw_status_bar();
+            self.draw_message_bar();
             Terminal::cursor_position(&Position {
                 x: self.cursor_position.x.saturating_sub(self.offset.x),
                 y: self.cursor_position.y.saturating_sub(self.offset.y),
@@ -128,6 +167,15 @@ impl Editor {
         }
         Terminal::cursor_show();
         Terminal::flush()
+    }
+    fn draw_status_bar(&self) {
+        let spaces = " ".repeat(self.terminal.size().width as usize);
+        Terminal::set_bg_color(STATUS_BG_COLOR);
+        println!("{}\r", spaces);
+        Terminal::reset_bg_color();
+    }
+    fn draw_message_bar(&self) {
+        Terminal::clear_current_line();
     }
     fn draw_welcome_message(&self) {
         let mut welcome_message = format!("Hecto editor -- version {}", VERSION);
@@ -149,7 +197,7 @@ impl Editor {
     }
     fn draw_rows(&self) {
         let height = self.terminal.size().height;
-        for terminal_row in 0..height - 1 {
+        for terminal_row in 0..height {
             Terminal::clear_current_line();
             if let Some(row) = self.document.row(terminal_row as usize + self.offset.y) {
                 self.draw_row(row);
