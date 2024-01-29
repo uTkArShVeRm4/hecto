@@ -2,9 +2,11 @@ use crate::Document;
 use crate::Row;
 use crate::Terminal;
 use std::env;
+use std::fmt::format;
 use termion::color;
 use termion::event::Key;
 
+const STATUS_FG_COLOR: color::Rgb = color::Rgb(63, 63, 63);
 const STATUS_BG_COLOR: color::Rgb = color::Rgb(239, 239, 239);
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 #[derive(Default)]
@@ -169,9 +171,28 @@ impl Editor {
         Terminal::flush()
     }
     fn draw_status_bar(&self) {
-        let spaces = " ".repeat(self.terminal.size().width as usize);
-        Terminal::set_bg_color(STATUS_BG_COLOR);
-        println!("{}\r", spaces);
+        let mut status;
+        let width = self.terminal.size().width as usize;
+        let mut file_name = "[No Name]".to_string();
+        if let Some(name) = &self.document.file_name {
+            file_name = name.clone();
+            file_name.truncate(20);
+        }
+        status = format!("{} - {} lines", file_name, self.document.len());
+        let line_indicator = format!(
+            "{}/{}",
+            self.cursor_position.y.saturating_add(1),
+            self.document.len()
+        );
+        let len = status.len() + line_indicator.len();
+        if width > len {
+            status.push_str(&" ".repeat(width - len));
+        }
+        status = format!("{}{}", status, line_indicator);
+        status.truncate(width);
+        Terminal::set_fg_color(STATUS_FG_COLOR);
+        println!("{}\r", status);
+        Terminal::reset_fg_color();
         Terminal::reset_bg_color();
     }
     fn draw_message_bar(&self) {
