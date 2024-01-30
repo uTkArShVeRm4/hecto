@@ -2,7 +2,8 @@ use crate::Document;
 use crate::Row;
 use crate::Terminal;
 use std::env;
-use std::fmt::format;
+use std::time::Duration;
+use std::time::Instant;
 use termion::color;
 use termion::event::Key;
 
@@ -15,19 +16,42 @@ pub struct Position {
     pub y: usize,
 }
 
+struct StatusMessage {
+    text: String,
+    time: Instant,
+}
+
+impl StatusMessage {
+    fn from(message: String) -> Self {
+        Self {
+            time: Instant::now(),
+            text: message,
+        }
+    }
+}
+
 pub struct Editor {
     should_quit: bool,
     terminal: Terminal,
     cursor_position: Position,
     offset: Position,
     document: Document,
+    status_message: StatusMessage,
 }
 
 impl Editor {
     pub fn default() -> Self {
         let args: Vec<String> = env::args().collect();
+        let mut initial_status = String::from("HELP: Ctrl-Q = quit");
         let document = if args.len() > 1 {
-            Document::open(&args[1]).unwrap_or_default()
+            let file_name = &args[1];
+            let doc = Document::open(&file_name);
+            if doc.is_ok() {
+                doc.unwrap()
+            } else {
+                initial_status = format!("ERR: Could not open file: {}", file_name);
+                Document::default()
+            }
         } else {
             Document::default()
         };
@@ -36,6 +60,7 @@ impl Editor {
             terminal: Terminal::default().expect("Failed to initialise terminal"),
             cursor_position: Position::default(),
             offset: Position::default(),
+            status_message: StatusMessage::from(initial_status),
             document,
         }
     }
@@ -57,6 +82,10 @@ impl Editor {
         let pressed_key = Terminal::read_key()?;
         match pressed_key {
             Key::Ctrl('q') => self.should_quit = true,
+            Key::Char(c) => {
+                self.document.insert(&self.cursor_position, c);
+                self.move_cursor(Key::Right);
+            }
             Key::Up
             | Key::Left
             | Key::Down
@@ -190,6 +219,7 @@ impl Editor {
         }
         status = format!("{}{}", status, line_indicator);
         status.truncate(width);
+        Terminal::set_bg_color(STATUS_BG_COLOR);
         Terminal::set_fg_color(STATUS_FG_COLOR);
         println!("{}\r", status);
         Terminal::reset_fg_color();
@@ -197,6 +227,12 @@ impl Editor {
     }
     fn draw_message_bar(&self) {
         Terminal::clear_current_line();
+        let message = &self.status_message;
+        if Instant::now() - message.time < Duration::new(5, 0) {
+            let mut text = message.text.clone();
+            text.truncate(self.terminal.size().width as usize);
+            print!("{}", text);
+        }
     }
     fn draw_welcome_message(&self) {
         let mut welcome_message = format!("Hecto editor -- version {}", VERSION);
