@@ -42,7 +42,7 @@ pub struct Editor {
 impl Editor {
     pub fn default() -> Self {
         let args: Vec<String> = env::args().collect();
-        let mut initial_status = String::from("HELP: Ctrl-Q = quit");
+        let mut initial_status = String::from("HELP: Ctrl-S = Save | Ctrl-Q = Quit");
         let document = if args.len() > 1 {
             let file_name = &args[1];
             let doc = Document::open(&file_name);
@@ -82,6 +82,14 @@ impl Editor {
         let pressed_key = Terminal::read_key()?;
         match pressed_key {
             Key::Ctrl('q') => self.should_quit = true,
+            Key::Ctrl('s') => {
+                if self.document.save().is_ok() {
+                    self.status_message =
+                        StatusMessage::from("File Saved Successfully!".to_string());
+                } else {
+                    self.status_message = StatusMessage::from("Error Saving File!".to_string());
+                }
+            }
             Key::Char(c) => {
                 self.document.insert(&self.cursor_position, c);
                 self.move_cursor(Key::Right);
