@@ -2,6 +2,7 @@ use crate::Document;
 use crate::Row;
 use crate::Terminal;
 use std::env;
+use std::io::Error;
 use std::time::Duration;
 use std::time::Instant;
 use termion::color;
@@ -78,18 +79,26 @@ impl Editor {
         }
     }
 
+    pub fn save(&mut self) {
+        if self.document.file_name.is_none() {
+            let new_name = self.prompt("Save as: ").unwrap_or(None);
+            if new_name.is_none() {
+                self.status_message = StatusMessage::from("Save Aborted.".to_string());
+                return;
+            }
+            self.document.file_name = new_name;
+        }
+        if self.document.save().is_ok() {
+            self.status_message = StatusMessage::from("File Saved Successfully!".to_string());
+        } else {
+            self.status_message = StatusMessage::from("Error Saving File!".to_string());
+        }
+    }
     fn process_keypress(&mut self) -> Result<(), std::io::Error> {
         let pressed_key = Terminal::read_key()?;
         match pressed_key {
             Key::Ctrl('q') => self.should_quit = true,
-            Key::Ctrl('s') => {
-                if self.document.save().is_ok() {
-                    self.status_message =
-                        StatusMessage::from("File Saved Successfully!".to_string());
-                } else {
-                    self.status_message = StatusMessage::from("Error Saving File!".to_string());
-                }
-            }
+            Key::Ctrl('s') => self.save(),
             Key::Char(c) => {
                 self.document.insert(&self.cursor_position, c);
                 self.move_cursor(Key::Right);
@@ -213,6 +222,37 @@ impl Editor {
         }
         Terminal::cursor_show();
         Terminal::flush()
+    }
+    pub fn prompt(&mut self, prompt: &str) -> Result<Option<String>, Error> {
+        let mut result = String::new();
+        loop {
+            self.status_message = StatusMessage::from(format!("{}{}", prompt, result));
+            self.refresh_screen()?;
+
+            match Terminal::read_key()? {
+                Key::Backspace => {
+                    if !result.is_empty() {
+                        result.truncate(result.len() - 1);
+                    }
+                }
+                Key::Char('\n') => break,
+                Key::Char(c) => {
+                    if !c.is_control() {
+                        result.push(c);
+                    }
+                }
+                Key::Esc => {
+                    result.truncate(0);
+                    break;
+                }
+                _ => (),
+            }
+        }
+        self.status_message = StatusMessage::from(String::new());
+        if result.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(result))
     }
     fn draw_status_bar(&self) {
         let mut status;
