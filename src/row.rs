@@ -52,7 +52,7 @@ impl Row {
         for (index, grapheme) in self.string[..].graphemes(true).enumerate() {
             length += 1;
             if index == at {
-                lenght += 1;
+                length += 1;
                 result.push(c);
             }
             result.push_str(grapheme);
